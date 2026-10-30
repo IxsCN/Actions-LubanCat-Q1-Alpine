@@ -11,10 +11,6 @@ jobs:
     timeout-minutes: 330
     steps:
       - uses: actions/checkout@v4
-      # Vendor U-Boot's make.sh still requires a Python 2 executable.
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '2.7'
       - name: Install build tools
         run: |
           sudo apt-get update
@@ -24,6 +20,13 @@ jobs:
             u-boot-tools qemu-user-static binfmt-support e2fsprogs git curl \
             python3 cpio rsync zstd liblz4-tool gdisk
           pahole --version
+      - name: Install Python 2 for vendor U-Boot
+        run: |
+          curl -fLsS https://micro.mamba.pm/api/micromamba/linux-64/latest -o /tmp/micromamba.tar.bz2
+          sudo tar xjf /tmp/micromamba.tar.bz2 -C /usr/local bin/micromamba --strip-components=1
+          sudo micromamba create -y -p /opt/q1-python2 -c conda-forge python=2.7
+          sudo ln -s /opt/q1-python2/bin/python2.7 /usr/local/bin/python2
+          python2 --version
       - name: Build image
         run: sudo -E bash scripts/build-image.sh
       - name: Check GPT partitions and embedded images
