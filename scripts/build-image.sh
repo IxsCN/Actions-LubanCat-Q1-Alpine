@@ -44,7 +44,7 @@ while IFS= read -r setting; do
   esac
 done < "$root/configs/dae.config"
 make -j"$(nproc)" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
-  Image rk3528-lubancat-q1.dtb modules
+  Image rockchip/rk3528-lubancat-q1.dtb modules
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
   INSTALL_MOD_PATH="$work/rootfs" modules_install
 kernel_release=$(make -s ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- kernelrelease)
