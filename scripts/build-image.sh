@@ -61,18 +61,27 @@ tar --numeric-owner -xzf alpine.tar.gz -C rootfs
 install -m 0755 /usr/bin/qemu-aarch64-static rootfs/usr/bin/qemu-aarch64-static
 cp "$root/scripts/setup-rootfs.sh" rootfs/tmp/setup-rootfs.sh
 cp /etc/resolv.conf rootfs/etc/resolv.conf
-mount -t proc proc rootfs/proc
-mount --rbind /sys rootfs/sys
-mount --rbind /dev rootfs/dev
 cleanup() {
-  umount -R rootfs/dev 2>/dev/null || true
-  umount -R rootfs/sys 2>/dev/null || true
-  umount rootfs/proc 2>/dev/null || true
+  # Never package host mounts (including nested mounts under /sys and /dev).
+  for target in dev sys proc; do
+    if mountpoint -q "rootfs/$target"; then
+      umount -R "rootfs/$target"
+    fi
+  done
 }
 trap cleanup EXIT
+mount -t proc proc rootfs/proc
+mount --bind /sys rootfs/sys
+mount --bind /dev rootfs/dev
 chroot rootfs /bin/sh /tmp/setup-rootfs.sh
 cleanup
 trap - EXIT
+for target in dev sys proc; do
+  if mountpoint -q "rootfs/$target"; then
+    echo "Host mount still present at rootfs/$target" >&2
+    exit 1
+  fi
+done
 rm -f rootfs/usr/bin/qemu-aarch64-static rootfs/tmp/setup-rootfs.sh rootfs/etc/resolv.conf
 # Vendor kernel modules match the generated Image, rather than Alpine's APK kernels.
 find rootfs/lib/modules -type l -delete
