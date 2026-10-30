@@ -23,8 +23,8 @@ jobs:
       - name: Install Python 2 for vendor U-Boot
         run: |
           curl -fLsS https://micro.mamba.pm/api/micromamba/linux-64/latest -o /tmp/micromamba.tar.bz2
-          sudo tar xjf /tmp/micromamba.tar.bz2 -C /usr/local bin/micromamba --strip-components=1
-          sudo micromamba create -y -p /opt/q1-python2 -c conda-forge python=2.7
+          sudo tar xjf /tmp/micromamba.tar.bz2 -C /usr/local/bin bin/micromamba --strip-components=1
+          /usr/local/bin/micromamba create -y -p /opt/q1-python2 -c conda-forge python=2.7
           sudo ln -s /opt/q1-python2/bin/python2.7 /usr/local/bin/python2
           python2 --version
       - name: Build image
