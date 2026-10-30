@@ -1,8 +1,8 @@
 # Actions LubanCat Q1 Alpine
 
-为野火 **LubanCat Q1（RK3528A）** 准备的独立 Alpine Linux 3.23 ARM64 SD 卡镜像构建原型。与 FriendlyElec 的 NanoPi 构建仓库独立，使用 [LubanCat 内核及 Q1 设备树](https://github.com/LubanCat/kernel)、[U-Boot](https://github.com/LubanCat/u-boot) 和 [rkbin](https://github.com/LubanCat/rkbin)。
+为野火 **LubanCat Q1（RK3528A）** 准备的独立 Alpine Linux 3.23 ARM64 镜像构建原型，输出 TF 卡镜像和 Rockchip USB 线刷 eMMC 固件。与 FriendlyElec 的 NanoPi 构建仓库独立，使用 [LubanCat 内核及 Q1 设备树](https://github.com/LubanCat/kernel)、[U-Boot](https://github.com/LubanCat/u-boot) 和 [rkbin](https://github.com/LubanCat/rkbin)。
 
-**状态：本地构建脚本及镜像打包器已实现，尚未在 GitHub Actions 全程编译，也未上板验证。请把首次产物当作实验镜像，不要覆盖原来的可启动系统。**
+**状态：SD 镜像已在 GitHub Actions 构建成功；尚未在 Q1 上验证启动。线刷 `update.img` 已加入构建，仍需 CI 和实机验证。请把首次产物当作实验固件，保留原来的可启动系统和恢复方法。**
 
 ## 构建内容
 
@@ -12,11 +12,14 @@
 - SD 镜像包含 Rockchip loader（LBA 64）、GPT 分区 `uboot`（LBA `0x4000`）、`boot`（`0x8000`）和 `rootfs`（`0x48000`），根分区 UUID 与野火 `parameter-extboot.txt` 一致。
 - `boot` 是 ext2 分区，放置野火的启动脚本、Image、Q1 DTB、uEnv；无 initrd，直接从 ext4 挂载 Alpine rootfs。
 
-**首次测试先用 TF 卡，不生成自动刷 eMMC 镜像。** 当前工作流仅上传 GitHub Actions Artifact（保留 14 天），不创建 Release。
+工作流分别上传两份 GitHub Actions Artifact（保留 14 天），不创建 Release：
+
+- `lubancat-q1-alpine-sd`：`*.img.gz`，解压后写入 TF 卡启动。
+- `lubancat-q1-alpine-emmc-update`：`*.update.img` 和 SHA256 文件，通过兼容 Rockchip 的 USB 线刷工具写入内部 eMMC。**不能把 `update.img` 当作 SD 卡镜像写入 TF 卡。** 线刷会覆盖 eMMC 上的现有数据，请先备份并确认设备进入 Loader/Maskrom 模式。
 
 ## 使用
 
-在自己创建的新 GitHub 仓库中提交本项目并启用 Actions，通过 **Build LubanCat Q1 Alpine SD image → Run workflow** 手动运行。Linux x86_64 Ubuntu 22.04 runner 会安装构建工具，随后执行 `scripts/build-image.sh`。成功后从运行页面的 Artifact 下载 `lubancat-q1-alpine-sd`。
+在 [Actions 页面](https://github.com/IxsCN/Actions-LubanCat-Q1-Alpine/actions) 选择 **Build LubanCat Q1 Alpine images → Run workflow**。Linux x86_64 Ubuntu 22.04 runner 构建 SD 镜像后，使用野火 SDK 对应的 `package-file-extboot`、`parameter-extboot.txt`、`afptool` 和 `rkImageMaker` 打包 Rockchip `update.img`。成功后从该运行页面下载两个 Artifact。SD 上传步骤独立完成；若线刷打包失败，SD Artifact 仍可下载，工作流会报告失败。
 
 启动串口：**1500000 8N1，3.3V TTL**。root 默认密码 `fa`，SSH 禁止 root 登录；首次从物理串口登录后立即修改密码，再按需配置 SSH。Tailscale 只预装，不自动登录。
 
@@ -28,11 +31,12 @@
 4. `/sys/kernel/btf/vmlinux`、`zcat /proc/config.gz` 与 `bpftool feature probe kernel`。
 5. 再安装并启动 dae 做真实流量测试；本项目暂不预装 dae。
 
-**尚未验证的风险**：野火 U-Boot 与 rkbin 在 GitHub runner 上的工具依赖、板上启动路径是否选择该 extboot 分区、Alpine 无 initramfs 时必需的存储驱动是否内建，以及供应商 BSP 与 dae 的真实运行兼容性。构建通过不等于可启动；出现故障请从上电开始保存完整串口日志。
+**尚未验证的风险**：板上启动路径是否选择该 extboot 分区、Alpine 无 initramfs 时必需的存储驱动是否内建、Rockchip 线刷包是否适配你的 eMMC 配置，以及供应商 BSP 与 dae 的真实运行兼容性。构建通过不等于可启动；出现故障请从上电开始保存完整串口日志。
 
 ## 代码入口
 
-- `.github/workflows/build.yml`：手动构建并上传 Artifact。
+- `.github/workflows/build.yml`：手动构建并分别上传 SD 和线刷 Artifact。
+- `scripts/pack-emmc.sh`：使用野火原厂分区描述与打包工具生成 USB 线刷 `update.img`。
 - `scripts/build-image.sh`：下载、编译、rootfs 和文件系统生成。
 - `scripts/pack-sd.py`：按 Q1 参数分区布局生成 GPT SD 镜像。
 - `configs/dae.config`：内核增量配置。

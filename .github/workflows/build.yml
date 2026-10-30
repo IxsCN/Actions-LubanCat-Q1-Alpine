@@ -1,4 +1,4 @@
-name: Build LubanCat Q1 Alpine SD image
+name: Build LubanCat Q1 Alpine images
 on:
   workflow_dispatch:
 
@@ -39,5 +39,16 @@ jobs:
         with:
           name: lubancat-q1-alpine-sd
           path: dist/*.img.gz
+          if-no-files-found: error
+          retention-days: 14
+      - name: Pack USB eMMC flashing image
+        run: sudo -E bash scripts/pack-emmc.sh
+      - name: Upload USB eMMC flashing image
+        uses: actions/upload-artifact@v4
+        with:
+          name: lubancat-q1-alpine-emmc-update
+          path: |
+            dist/*.update.img
+            dist/*.update.img.sha256
           if-no-files-found: error
           retention-days: 14
