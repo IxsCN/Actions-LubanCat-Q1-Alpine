@@ -40,8 +40,13 @@ loader=$(find "$work/u-boot" -maxdepth 1 -name '*_loader_*.bin' -print -quit)
 test -n "$loader" && test -s "$loader"
 cp "$loader" "$pack_dir/MiniLoaderAll.bin"
 for image in uboot boot rootfs; do
-  test -s "$work/$image.img" || { echo "Missing $image.img" >&2; exit 1; }
-  cp --reflink=auto "$work/$image.img" "$pack_dir/$image.img"
+  if [ "$image" = uboot ]; then
+    source_image="$work/u-boot/uboot.img"
+  else
+    source_image="$work/$image.img"
+  fi
+  test -s "$source_image" || { echo "Missing $source_image" >&2; exit 1; }
+  cp --reflink=auto "$source_image" "$pack_dir/$image.img"
 done
 
 # Fail if the published vendor format changes unexpectedly.
