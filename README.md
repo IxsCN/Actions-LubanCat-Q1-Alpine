@@ -2,7 +2,7 @@
 
 为野火 **LubanCat Q1（RK3528A）** 准备的独立 Alpine Linux 3.23 ARM64 镜像构建原型，输出 TF 卡镜像和 Rockchip USB 线刷 eMMC 固件。与 FriendlyElec 的 NanoPi 构建仓库独立，使用 [LubanCat 内核及 Q1 设备树](https://github.com/LubanCat/kernel)、[U-Boot](https://github.com/LubanCat/u-boot) 和 [rkbin](https://github.com/LubanCat/rkbin)。
 
-**状态：SD 镜像已在 GitHub Actions 构建成功；尚未在 Q1 上验证启动。线刷 `update.img` 已加入构建，仍需 CI 和实机验证。请把首次产物当作实验固件，保留原来的可启动系统和恢复方法。**
+**状态：SD 镜像和线刷 `update.img` 均已在 GitHub Actions 构建成功，尚未在 Q1 上验证启动或实际刷写。请把首次产物当作实验固件，保留原来的可启动系统和恢复方法。**
 
 ## 构建内容
 
@@ -12,14 +12,14 @@
 - SD 镜像包含 Rockchip loader（LBA 64）、GPT 分区 `uboot`（LBA `0x4000`）、`boot`（`0x8000`）和 `rootfs`（`0x48000`），根分区 UUID 与野火 `parameter-extboot.txt` 一致。
 - `boot` 是 ext2 分区，放置野火的启动脚本、Image、Q1 DTB、uEnv；无 initrd，直接从 ext4 挂载 Alpine rootfs。
 
-工作流分别上传两份 GitHub Actions Artifact（保留 14 天），不创建 Release：
+构建工作流先上传两份 GitHub Actions Artifact（保留 14 天）。成功后由独立发布工作流将镜像与 SHA256 校验文件发布到 [Releases](https://github.com/IxsCN/Actions-LubanCat-Q1-Alpine/releases)，标记为预发布版本：
 
 - `lubancat-q1-alpine-sd`：`*.img.gz`，解压后写入 TF 卡启动。
 - `lubancat-q1-alpine-emmc-update`：`*.update.img` 和 SHA256 文件，通过兼容 Rockchip 的 USB 线刷工具写入内部 eMMC。**不能把 `update.img` 当作 SD 卡镜像写入 TF 卡。** 线刷会覆盖 eMMC 上的现有数据，请先备份并确认设备进入 Loader/Maskrom 模式。
 
 ## 使用
 
-在 [Actions 页面](https://github.com/IxsCN/Actions-LubanCat-Q1-Alpine/actions) 选择 **Build LubanCat Q1 Alpine images → Run workflow**。Linux x86_64 Ubuntu 22.04 runner 构建 SD 镜像后，使用野火 SDK 对应的 `package-file-extboot`、`parameter-extboot.txt`、`afptool` 和 `rkImageMaker` 打包 Rockchip `update.img`。成功后从该运行页面下载两个 Artifact。SD 上传步骤独立完成；若线刷打包失败，SD Artifact 仍可下载，工作流会报告失败。
+在 [Actions 页面](https://github.com/IxsCN/Actions-LubanCat-Q1-Alpine/actions) 选择 **Build LubanCat Q1 Alpine images → Run workflow**。Linux x86_64 Ubuntu 22.04 runner 构建 SD 镜像后，使用野火 SDK 对应的 `package-file-extboot`、`parameter-extboot.txt`、`afptool` 和 `rkImageMaker` 打包 Rockchip `update.img`。两个附件都成功上传后，发布工作流才会创建预发布 Release；构建失败不会发布不完整镜像。若线刷打包失败，SD Artifact 仍可从构建页面下载。已有成功构建也可手动运行 **Publish LubanCat Q1 Alpine images** 并填写原构建 run ID 发布，无需重新编译。
 
 启动串口：**1500000 8N1，3.3V TTL**。root 默认密码 `fa`，SSH 禁止 root 登录；首次从物理串口登录后立即修改密码，再按需配置 SSH。Tailscale 只预装，不自动登录。
 
@@ -36,6 +36,7 @@
 ## 代码入口
 
 - `.github/workflows/build.yml`：手动构建并分别上传 SD 和线刷 Artifact。
+- `.github/workflows/release.yml`：成功构建后自动发布预发布 Release，也支持通过构建 run ID 补发。
 - `scripts/pack-emmc.sh`：使用野火原厂分区描述与打包工具生成 USB 线刷 `update.img`。
 - `scripts/build-image.sh`：下载、编译、rootfs 和文件系统生成。
 - `scripts/pack-sd.py`：按 Q1 参数分区布局生成 GPT SD 镜像。

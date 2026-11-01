@@ -87,5 +87,5 @@ test -s "$work/update.raw.img"
   "$work/update.raw.img" "$out" -os_type:androidos
 test -s "$out"
 file "$out"
-sha256sum "$out" > "$out.sha256"
+(cd "$root/dist" && sha256sum "$(basename "$out")" > "$(basename "$out").sha256")
 echo "Rockchip USB flashing image: $out"

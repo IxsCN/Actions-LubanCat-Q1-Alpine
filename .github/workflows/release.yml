@@ -1,0 +1,106 @@
+name: Publish LubanCat Q1 Alpine images
+
+on:
+  workflow_run:
+    workflows: [Build LubanCat Q1 Alpine images]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful image build run ID to publish
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Verify the build belongs to this repository and succeeded
+        id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_RUN_ID: ${{ inputs.run_id }}
+          COMPLETED_RUN_ID: ${{ github.event.workflow_run.id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            run_id=$DISPATCH_RUN_ID
+          else
+            run_id=$COMPLETED_RUN_ID
+          fi
+          [[ "$run_id" =~ ^[0-9]+$ ]] || { echo 'Invalid run ID' >&2; exit 1; }
+          gh api "repos/$REPOSITORY/actions/runs/$run_id" > build.json
+          jq -e --arg repo "$REPOSITORY" '
+            .repository.full_name == $repo and
+            .head_repository.full_name == $repo and
+            .head_branch == "main" and
+            .event == "workflow_dispatch" and
+            .status == "completed" and
+            .conclusion == "success" and
+            .path == ".github/workflows/build.yml" and
+            (.head_sha | test("^[0-9a-f]{40}$"))
+          ' build.json
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$(jq -r .head_sha build.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Download both image artifacts from the verified run
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.build.outputs.run_id }}
+          github-token: ${{ github.token }}
+          pattern: lubancat-q1-alpine-*
+          path: dist
+          merge-multiple: true
+
+      - name: Verify files and checksums before publishing
+        id: files
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          sd=(dist/lubancat-q1-sd-alpine-*.img.gz)
+          emmc=(dist/lubancat-q1-emmc-alpine-*.update.img)
+          checksums=(dist/lubancat-q1-emmc-alpine-*.update.img.sha256)
+          [ "${#sd[@]}" -eq 1 ] && [ "${#emmc[@]}" -eq 1 ] && [ "${#checksums[@]}" -eq 1 ] || {
+            echo 'Expected exactly one SD image, one eMMC update image and its SHA256 file' >&2
+            exit 1
+          }
+          [ -s "${sd[0]}" ] && [ -s "${emmc[0]}" ] && [ -s "${checksums[0]}" ]
+          gzip -t "${sd[0]}"
+          # Older artifacts used an absolute runner path in the checksum file.
+          # Keep only its hash, then verify the downloaded image locally.
+          expected=$(awk 'NR == 1 {print $1}' "${checksums[0]}")
+          [[ "$expected" =~ ^[0-9a-fA-F]{64}$ ]] && [ "$(wc -l < "${checksums[0]}")" -eq 1 ]
+          printf '%s  %s\n' "$expected" "$(basename "${emmc[0]}")" > "${checksums[0]}"
+          (cd dist && sha256sum -c "$(basename "${checksums[0]}")")
+          (cd dist && sha256sum "$(basename "${sd[0]}")" > "$(basename "${sd[0]}").sha256")
+          echo "sd=$(basename "${sd[0]}")" >> "$GITHUB_OUTPUT"
+          echo "emmc=$(basename "${emmc[0]}")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish test images to Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: q1-alpine-3.23.4-build-${{ steps.build.outputs.run_id }}
+          name: LubanCat Q1 Alpine 3.23.4 (build ${{ steps.build.outputs.run_id }})
+          target_commitish: ${{ steps.build.outputs.head_sha }}
+          prerelease: true
+          fail_on_unmatched_files: true
+          body: |
+            Experimental Alpine Linux 3.23.4 images for LubanCat Q1 (RK3528A).
+            Built from successful Actions run ${{ steps.build.outputs.run_id }} at commit ${{ steps.build.outputs.head_sha }}.
+
+            SD: write the decompressed .img to a TF card.
+            eMMC: flash the .update.img with a compatible Rockchip USB flashing tool.
+            The USB image overwrites existing eMMC data. Do not write it to an SD card.
+            Neither boot path has been verified on hardware yet.
+          files: |
+            dist/${{ steps.files.outputs.sd }}
+            dist/${{ steps.files.outputs.sd }}.sha256
+            dist/${{ steps.files.outputs.emmc }}
+            dist/${{ steps.files.outputs.emmc }}.sha256
